@@ -1,6 +1,6 @@
 ---
-title: "Logistic-NA-percentage-befoe impute"
-author: "Insofe Lab"
+title: "Random Forest with NA imputation"
+author: "Tanzeem Ahmed Nayaz"
 date: "June 20, 2018"
 output:
   html_document: default
