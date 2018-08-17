@@ -1,0 +1,253 @@
+---
+title: "Logistic-NA-percentage-befoe impute"
+author: "Insofe Lab"
+date: "June 20, 2018"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(DMwR)
+library(caret)
+library(ROCR)
+```
+```{r,echo=TRUE}
+
+rm(list = ls(all.names = TRUE))
+
+```
+
+```{r,echo=TRUE}
+
+bank_data <- read.csv("C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/train.csv",header = TRUE)
+
+```
+
+```{r,echo=TRUE}
+str(bank_data)
+```
+We notice that all the variables are of type Integer.
+
+#Convert the target variable to factor
+
+```{r,echo=TRUE}
+bank_data$target <- as.factor(bank_data$target)
+
+```
+
+
+```{r ,echo=TRUE}
+summary(bank_data)
+
+```
+
+```{r, echo=TRUE}
+
+colSums(is.na(bank_data))
+
+```
+```{r,echo=TRUE}
+NA_perc <- data.frame(colSums(is.na(bank_data)/nrow(bank_data))*100)
+
+NA_perc1 <- data.frame(rownames(NA_perc),NA_perc[,1])
+
+NA_perc1
+
+colnames(NA_perc1) <- c("Attribute","perc_of_NA")
+
+NA_perc1[order(NA_perc1$perc_of_NA,decreasing = TRUE),]
+```
+
+
+->We notice NA's in almost all the attributes are present in small numbers but Attribute 37 has more than 44% NA's. 
+->The NA's in other columns could be imputed.
+->Attribute 37 can be dropped completely or imputed.
+-> To be taken care of after the Train and Test Split
+
+#We create a new column that makes a note of NAs across each row
+```{r,echo=TRUE}
+bank_data$na_count <- apply(is.na(bank_data), 1, sum)
+
+```
+
+
+Split the data into Train and Validation
+
+```{r,echo=TRUE}
+library(caret)
+
+set.seed(786)
+
+train_rows <- createDataPartition(bank_data$target,p=0.7,list=F)
+
+train_data <- bank_data[train_rows,]
+
+val_data <- bank_data[-train_rows,]
+
+
+```
+
+#Imputing missing values using KNN
+
+```{r,echo=TRUE}
+
+library(class)
+library(DMwR)
+
+
+val_data$ID <- NULL
+
+train_data$ID <- NULL
+
+target <- train_data$target
+val_data_target <- val_data$target
+
+val_data$target <- NULL
+train_data$target <- NULL
+
+train_Data <- knnImputation(data = train_data)
+sum(is.na(train_Data))
+val_Data <- knnImputation(data = val_data,distData = train_Data)
+sum(is.na(val_Data))
+
+val_Data$target <- NULL
+
+#Read in test data, remove index, add new NA row  and impute
+
+test_data <- read.csv("C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/test.csv",header = TRUE)
+
+index <- test_data$ID
+
+
+test_data$ID <- NULL
+
+#Add new column, numbe of NAs across each row
+
+
+test_data$na_count <- apply(is.na(test_data), 1, sum)
+
+
+test_Data <-knnImputation(data = test_data,distData = train_Data)
+
+#Combining train data imputed and target before building model
+train_Data <- data.frame(train_Data,target)
+
+
+```
+
+#Build the model using all the attributes
+
+```{r,echo=TRUE}
+library(randomForest)
+
+model = randomForest(target ~ ., data=train_Data, 
+                     keep.forest=TRUE, ntree=100) 
+
+# Print and understand the model
+print(model)
+
+model$importance  
+round(importance(model), 2) 
+
+
+# Extract and store important variables obtained from the random forest model
+rf_Imp_Attr = data.frame(model$importance)
+rf_Imp_Attr = data.frame(row.names(rf_Imp_Attr),rf_Imp_Attr[,1])
+colnames(rf_Imp_Attr) = c('Attributes', 'Importance')
+rf_Imp_Attr = rf_Imp_Attr[order(rf_Imp_Attr$Importance, decreasing = TRUE),]
+
+
+# Predicton Test Data
+pred_Test = predict(model, test_Data,
+                    type="response", 
+                    norm.votes=TRUE)
+head(pred_Test)
+
+final_data <-cbind(index,test_Data,pred_Test)
+
+names(final_data)[c(1,67)] = c("ID","prediction")
+
+submission <- final_data[,names(final_data) %in% c("ID","prediction") ]
+
+
+```
+
+#Write to CSV file 
+
+```{r,echo=TRUE}
+
+library(xlsx)
+
+write.csv(submission, "C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/Submission-random-forest.csv")
+```
+
+Trial Blockkkk
+
+```{r,echo=TRUE}
+library(randomForest)
+
+#For checking importance and removing Colinear Attributes
+model_trial = randomForest(target ~ ., data=trial, 
+                      keep.forest=TRUE, ntree=100,mtry = best.m)
+
+#For trying out different values of Over and under
+model_trial = randomForest(target ~ ., data=trial_smote, 
+                      keep.forest=TRUE, ntree=100)
+#Normalised Smoted Data
+model_trial = randomForest(target ~ ., data=trial_smote_reg, 
+                      keep.forest=TRUE, ntree=100)
+
+#PCA
+
+model_trial = randomForest(target ~ ., data=trial_smote_pca, 
+                      keep.forest=TRUE, ntree=100)
+
+test_data_pca <- princomp(test_Data[c("Attr60","Attr45")])
+
+test_data_pca <- data.frame(test_data_pca$scores)
+
+test_data_pc <-  data.frame(test_Data[!names(test_Data) %in% c("Attr60","Attr45")],test_data_pca$Comp.1)
+
+colnames(test_data_pc)[64] <- c("pca_trial_smote.Comp.1")
+
+pred_Trial = predict(model_trial, test_data_pc,
+                    type="response", 
+                    norm.votes=TRUE)
+
+
+round(importance(model_trial), 2) 
+rf_Imp_Attr = data.frame(model_trial$importance)
+rf_Imp_Attr = data.frame(row.names(rf_Imp_Attr),rf_Imp_Attr[,1])
+colnames(rf_Imp_Attr) = c('Attributes', 'Importance')
+rf_Imp_Attr[order(rf_Imp_Attr$Importance, decreasing = TRUE),]
+
+
+pred_Trial = predict(model_trial, test_Data,
+                    type="response", 
+                    norm.votes=TRUE)
+
+#Select best MTry
+
+mtry <- tuneRF(trial_smote[-26],trial_smote$target, ntreeTry=100,stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+print(mtry)
+print(best.m)
+
+#Write to file
+
+final_trial <-cbind(index,test_Data,pred_Trial)
+
+names(final_trial)[c(1,67)] = c("ID","prediction")
+
+submission <- final_trial[,names(final_trial) %in% c("ID","prediction") ]
+
+write.csv(submission, "C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/Submission-43-13-172056544-103644rf-193150-511649-2211238-336353-rep2458-233262-2635-423-40-2552-smote9inf.csv")
+```
+
