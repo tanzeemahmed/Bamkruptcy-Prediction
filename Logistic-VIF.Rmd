@@ -1,0 +1,559 @@
+---
+title: "Logistic-NA-percentage-befoe impute"
+author: "Insofe Lab"
+date: "June 20, 2018"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(DMwR)
+library(caret)
+library(ROCR)
+```
+```{r,echo=TRUE}
+
+rm(list = ls(all.names = TRUE))
+
+```
+
+```{r,echo=TRUE}
+
+bank_data <- read.csv("C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/train.csv",header = TRUE)
+
+
+```
+
+```{r,echo=TRUE}
+str(bank_data)
+```
+We notice that all the variables are of type Integer.
+
+#Convert the target variable to factor
+
+```{r,echo=TRUE}
+bank_data$target <- as.factor(bank_data$target)
+
+```
+
+
+```{r ,echo=TRUE}
+summary(bank_data)
+
+```
+
+```{r, echo=TRUE}
+
+colSums(is.na(bank_data))
+
+```
+```{r,echo=TRUE}
+NA_perc <- data.frame(colSums(is.na(bank_data)/nrow(bank_data))*100)
+
+NA_perc1 <- data.frame(rownames(NA_perc),NA_perc[,1])
+
+NA_perc1
+
+colnames(NA_perc1) <- c("Attribute","perc_of_NA")
+
+NA_perc1[order(NA_perc1$perc_of_NA,decreasing = TRUE),]
+```
+
+
+->We notice NA's in almost all the attributes are present in small numbers but Attribute 37 has more than 44% NA's. 
+->The NA's in other columns could be imputed.
+->Attribute 37 can be dropped completely or imputed.
+-> To be taken care of after the Train and Test Split
+
+#We create a new column that makes a note of NAs across each row
+```{r,echo=TRUE}
+bank_data$na_count <- apply(is.na(bank_data), 1, sum)
+
+```
+
+
+Split the data into Train and Validation
+
+```{r,echo=TRUE}
+library(caret)
+
+set.seed(786)
+
+train_rows <- createDataPartition(bank_data$target,p=0.7,list=F)
+
+train_data <- bank_data[train_rows,]
+
+val_data <- bank_data[-train_rows,]
+
+
+```
+
+#Imputing missing values using KNN
+
+```{r,echo=TRUE}
+
+library(class)
+library(DMwR)
+
+
+val_data$ID <- NULL
+
+train_data$ID <- NULL
+
+target <- train_data$target
+val_data_target <- val_data$target
+
+val_data$target <- NULL
+train_data$target <- NULL
+
+train_Data <- knnImputation(data = train_data)
+sum(is.na(train_Data))
+val_Data <- knnImputation(data = val_data,distData = train_Data)
+sum(is.na(val_Data))
+
+val_Data$target <- NULL
+
+#Read in test data, remove index, add new NA row  and impute
+
+test_data <- read.csv("C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/test.csv",header = TRUE)
+
+index <- test_data$ID
+
+
+test_data$ID <- NULL
+
+#Add new column, numbe of NAs across each row
+
+
+test_data$na_count <- apply(is.na(test_data), 1, sum)
+
+
+test_Data <-knnImputation(data = test_data,distData = train_Data)
+
+train_Data$target <- NULL
+
+#Combining train data imputed and target before building model
+train_Data <- data.frame(train_Data,target)
+
+
+```
+
+Attru=ibute 14 and 18 are exactly the same. Drop 18 from all train dataset
+
+```{r,echo=TRUE}
+train_Data$Attr18 <- NULL
+
+train_Data$Attr14 <- NULL
+
+```
+
+
+```{r,echo=TRUE}
+library(corrplot)
+
+corrplot(cor(train_Data, use = "complete.obs"), method = "number")
+
+cor(x = train_Data,method = "pearson")
+
+```
+
+#Build a Model excluding the ID and response variable
+
+```{r,echo=TRUE}
+
+log_reg <- glm(target~., data = train_Data, family = binomial)
+
+summary(log_reg)
+```
+#Run step AIC on the model built
+```{r,echo=TRUE}
+
+library(MASS)
+
+model_aic <- stepAIC(log_reg, direction = "both")
+
+vif_value <- vif(log_reg)
+
+sort(vif_value,decreasing = TRUE)
+```
+
+
+```{r,echo=TRUE}
+library(car)
+
+train_Data_vif <- train_Data[!names(train_Data) %in% 
+c("Attr43","Attr44","Attr20","Attr13","Attr49","Attr19","Attr42","Attr17","Attr8","Attr56","Attr46","Attr4","Attr54","Attr53","Attr10","Attr38","Attr9","Attr36","Attr31","Attr23","Attr51","Attr58","Attr16","Attr50","Attr3","Attr26","Attr22","Attr7","Attr11","Attr2","Attr24","Attr33","Attr48","Attr63","Attr25","Attr62","Attr30","Attr6","Attr39","Attr35","Attr64","Attr32","Attr12")]
+```
+
+###########Trial and Error block######
+
+```{r,echo=TRUE}
+
+library(ROSE)
+
+#Trial and error of different values
+trial <- train_Data[!names(train_Data) %in% c("Attr43","Attr13","Attr17","Attr54","Attr4","Attr56","Attr20","Attr10","Attr36","Attr44","Attr19","Attr31","Attr50","Attr51","Attr16","Attr49","Attr22","Attr11","Attr2","Attr38","Attr33","Attr63","Attr53","Attr9","Attr48","Attr7","Attr12","Attr30","Attr62","Attr23","Attr32","Attr62","Attr26","Attr35","Attr42","Attr3","Attr40","Attr25","Attr52")]
+
+aic <- train_Data[names(train_Data) %in% c("Attr1","Attr6","Attr8","Attr24","Attr27","Attr29","Attr34","Attr39","Attr55","Attr58","na_count")]
+
+
+isignificant <- c("Attr5","Attr15","Attr21","Attr27","Attr28","Attr37","Attr41","Attr45","Attr46","Attr47","Attr57","Attr59","Attr60","Attr61","Attr64")
+
+balanc_trial <- ovun.sample(target~., data=trial,N = 30000,method = "both")$data
+
+
+trial_smote <-SMOTE(target ~ ., trial, perc.over =500, perc.under = 300)
+
+table(trial_smote$target)
+
+log_trial <- glm(target~.,data = trial,family = binomial)
+
+summary(log_trial)
+
+prob_trial <- predict(log_trial,type = "response")
+
+head(prob_trial)
+
+predt <- prediction(prob_trial,trial$target)
+
+predt@predictions
+
+perf_auct <- performance(predt,measure = "auc")
+
+perf_auct@y.values[[1]]
+
+library(ROCR)
+
+perf <- performance(predt,measure = "tpr",x.measure = "fpr")
+
+
+plot(perf,col=rainbow(10),colorize=T,print.cutoffs.at=seq(0,1,0.1))
+
+
+prob_trial <- predict(log_trial,newdata = test_Data,type = "response")
+
+preds_trial <- ifelse(prob_trial>0.1,1,0)
+
+#Write to file
+
+final_trial <-cbind(index,test_Data,preds_trial)
+
+names(final_trial)[c(1,67)] = c("ID","prediction")
+
+submission <- final_trial[,names(final_trial) %in% c("ID","prediction") ]
+
+write.csv(submission, "C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/Submission-43-13-1720.csv")
+
+
+
+#Check for new corelated variables
+library(car)
+
+sort(vif(log_trial),decreasing = TRUE)
+
+target <- trial$target
+
+trial$target <- NULL
+
+corrplot(cor(trial, use = "complete.obs"), method = "number")
+
+cor(x = trial,y = trial$Attr8,method = "pearson")
+
+trial <- data.frame(trial,target)
+
+
+#Smote
+
+library(DMwR)
+
+trial_smote <-SMOTE(target ~ ., trial, perc.over =500, perc.under = 400)
+
+# trial_smote$Attr45 <- NULL Did not work as expected
+
+table(trial_smote$target)
+
+log_trial <- glm(target~.,data = trial_smote,family = binomial)
+
+summary(log_trial)
+
+prob_trial <- predict(log_trial)
+
+predt <- prediction(prob_trial,trial_smote$target)
+
+
+
+perf_auct <- performance(predt,measure = "auc")
+
+perf_auct@y.values[[1]]
+
+#Smote dataset corelation
+
+sort(vif(log_trial),decreasing = TRUE)
+
+target <- trial_smote$target
+
+trial_smote$target <- NULL
+
+cor(trial_smote,trial_smote$Attr60,method = "pearson")
+
+trial_smote <- data.frame(trial_smote,target)
+
+#Standardisation of Smote dataset
+
+library(standardize)
+
+trial_smote_reg <- scale(trial_smote,center = TRUE,scale = TRUE)
+
+trial_smote_reg <- data.frame(trial_smote_reg,target)
+
+log_trial <- glm(target~.,data = trial_smote_reg,family = binomial)
+
+summary(log_trial)
+
+prob_trial <- predict(log_trial)
+
+predt <- prediction(prob_trial,trial_smote_reg$target)
+
+perf_auct <- performance(predt,measure = "auc")
+
+perf_auct@y.values[[1]]
+
+sort(vif(log_trial),decreasing = TRUE)
+
+#PCA on Attr60 Attr45 and Attr8, PCA only on Attr60, Attr45
+
+pca_trial_smote <- princomp(trial_smote[c("Attr60","Attr45")])
+
+pca_trial_smote <- data.frame(pca_trial_smote$scores)
+
+class(pca_trial_smote)
+
+head(pca_trial_smote$scores)
+
+plot(pca_trial_smote)
+
+trial_smote_pca <- data.frame(trial_smote[!names(trial_smote) %in% c("Attr60","Attr45")],pca_trial_smote$Comp.1)
+
+names(trial_smote_pca)
+
+log_trial <- glm(target~.,data = trial_smote_pca,family = binomial)
+
+summary(log_trial)
+
+prob_trial <- predict(log_trial)
+
+predt <- prediction(prob_trial,trial_smote_pca$target)
+
+perf_auct <- performance(predt,measure = "auc")
+
+perf_auct@y.values[[1]]
+
+sort(vif(log_trial),decreasing = TRUE)
+
+
+#AIC on trial
+
+trial_aic <- stepAIC(log_trial,direction = "both")
+
+summary(trial_aic)
+
+sort(vif(trial_aic),decreasing = TRUE)
+
+prob_trial <- predict(trial_aic)
+
+predt <- prediction(prob_trial,trial$target)
+
+perf_auct <- performance(predt,measure = "auc")
+
+perf_auct@y.values[[1]]
+
+```
+
+Build a model on new dataset
+
+```{r}
+log_reg_vif <- glm(target~., data = train_Data_vif, family = binomial)
+
+summary(log_reg_vif)
+
+
+```
+
+#Run a Step Aic on the New model
+```{r}
+aic_mod <- stepAIC(log_reg_vif,direction = "both")
+
+```
+<!-- Get summary of the model -->
+
+```{r}
+summary(aic_mod)
+```
+
+```{r,echo=TRUE}
+
+vif(aic_mod)
+
+```
+#trial model-drop 40 and 34
+
+<!-- ```{r} -->
+<!-- trial <- train_Data[names(train_Data) %in%  -->
+<!-- c("Attr1","Attr27","Attr29","Attr41","Attr52","Attr55","Attr55","na_count","target")] -->
+
+<!-- trial_mod <- glm(target~.,data = trial,family = "binomial") -->
+
+<!-- summary(trial_mod) -->
+
+<!-- prob_trial <- predict(trial_mod) -->
+
+<!-- pred <- prediction(prob_trial,trial$target) -->
+
+<!-- perf <- performance(pred,measure = "tpr",x.measure = "fpr") -->
+
+<!-- perf_auc <- performance(pred,measure = "auc") -->
+
+<!-- perf_auc@y.values[[1]]  -->
+
+
+<!-- ``` -->
+
+
+#Get a list of Predictions using Predict function for aic_mod
+
+```{r,echo=TRUE}
+
+prob_train <- predict(aic_mod)
+head(prob_train)
+
+
+```
+#Create a Prediction object
+
+```{r}
+
+pred <- prediction(prob_train,train_Data$target)
+
+
+```
+
+#Extract Performance measure 
+
+```{r,echo=TRUE}
+
+perf <- performance(pred,measure = "tpr",x.measure = "fpr")
+
+```
+#Plot ROC Curve
+
+```{r,echo=TRUE}
+
+plot(perf,col=rainbow(10),colorize=T,print.cutoffs.at=seq(0,1,0.5))
+
+```
+
+#Extract AUC
+
+
+```{r,echo=TRUE}
+perf_auc <- performance(pred,measure = "auc")
+
+perf_auc@y.values[[1]] 
+
+head(preds_test,1000)
+
+```
+
+#Choose a Cutoff value and predict
+
+```{r,echo=TRUE}
+
+prob_test <- predict(log_reg,newdata = val_Data,type = "response")
+
+preds_test <- ifelse(prob_test>0.1,1,0)
+
+preds_test
+
+sum(is.na(preds_test))
+
+head(prob_test)
+
+head(preds_test,100)
+
+```
+```{r}
+head(prob_test,150)
+```
+```{r}
+
+sum(is.na(preds_test))
+
+```
+
+
+#Convert all Os and 1s in validation data
+
+```{r,echo=TRUE}
+targ <- ifelse(val_data$target==1,"yes","no")
+head(targ)
+
+```
+
+#Confusion Matrix
+
+```{r,echo=TRUE}
+
+cm_test = table("actual"=targ, "predicted"=preds_test);
+accu_Test= sum(diag(cm_test))/sum(cm_test)
+
+cm_test  
+accu_Test
+
+```
+
+#Read in test data,impute the values, separate ID, predict and merge ID later
+```{r ,echo=TRUE}
+
+require("knitr")
+
+opts_knit$set(root.dir = "C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/CUTE_3/CUTE_3")
+
+getwd()
+
+prob_test <- predict(aic_mod,newdata = test_Data,type = "response")
+
+preds_test <- ifelse(prob_test>0.3,1,0)
+
+```
+
+#Merge test data with predicted values
+
+
+```{r,echo=TRUE}
+
+final_data <-cbind(index,test_Data,preds_test)
+
+names(final_data)[c(1,67)] = c("ID","prediction")
+
+submission <- final_data[,names(final_data) %in% c("ID","prediction") ]
+
+
+```
+
+#Write to CSV file 
+
+```{r,echo=TRUE}
+
+library(xlsx)
+
+write.csv(submission, "C:/Users/Yunus Saleem/Desktop/Insofe/Cute-3/Submission-aic and vif-0.3.csv")
+
+```
+
