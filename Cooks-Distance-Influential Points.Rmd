@@ -1,0 +1,173 @@
+---
+title: "Identifying Influential Points using Cook's Distance"
+author: "Tanzeem Ahmed Nayaz"
+date: "June 19, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(DMwR)
+library(caret)
+```
+
+
+```{r,echo=TRUE}
+
+bank_data <- read.csv("train.csv",header = TRUE)
+
+```
+
+```{r,echo=TRUE}
+str(bank_data)
+```
+We notice that all the variables are of type Integer and are not interpretable.
+
+```{r ,echo=TRUE}
+summary(bank_data)
+```
+```{r, echo=TRUE}
+
+colSums(is.na(bank_data))
+
+```
+```{r,echo=TRUE}
+NA_perc <- data.frame(colSums(is.na(bank_data)/nrow(bank_data))*100)
+
+NA_perc1 <- data.frame(rownames(NA_perc),NA_perc[,1])
+
+NA_perc1
+
+colnames(NA_perc1) <- c("Attribute","perc_of_NA")
+
+NA_perc1[order(NA_perc1$perc_of_NA,decreasing = TRUE),]
+```
+
+
+->We notice NA's in almost all the attributes but Attribute 37 has more than 44% NA's. 
+->The NA's in other columns could be imputed.
+->Attribute 37 can be dropped completely or imputed.
+-> To be taken care of after the Train and Test Split
+
+We also notice a lot of potential outliers. We take the Cooks distance and see what we can do about them.
+```{r,echo=TRUE}
+
+length(bank_data$target)
+mod_cook <-glm(target~.,data = trial_smote_inf,family = binomial)
+
+summary(mod_cook)
+cooksd<- cooks.distance(mod_cook)
+
+length(cooksd)
+
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")
+```
+
+```{r}
+influential <- as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm=T))])
+
+head(trial_smote[influential,])
+
+trial_smote_inf <- trial_smote[-influential,]
+
+str(trial_smote_inf)
+  
+```
+
+Drop attribute 37 and find Cooks distance
+```{r,echo=TRUE}
+
+bank_data_37 <- bank_data[-37]
+
+length(bank_data_37$target)
+mod_cook <-glm(target~.-ID,data = bank_data_37)
+cooksd<- cooks.distance(mod_cook)
+length(cooksd)
+
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")
+
+sum(is.na(bank_data_37))
+```
+Impute all NA's and see influential points
+
+```{r,echo=TRUE}
+
+
+length(bank_data$target)
+mod_cook <-glm(target~.-ID,data = bank_data,family = binomial)
+
+summary(mod_cook)
+cooksd<- cooks.distance(mod_cook)
+
+length(cooksd)
+
+plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
+text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")
+
+
+```
+
+We observe that the NA values are obstructing Cooks measure. We will divide the data into train and test and then impute NA's and also handle outliers.
+
+```{r,echo=TRUE}
+
+
+```
+
+
+
+```{r}
+bank_nona <- centralImputation(bank_data)  
+sum(is.na(bank_nona))
+
+```
+
+```{r}
+sd(bank_nona$Attr49)
+```
+Build the Model
+```{r}
+log_reg <- glm(target~.-ID, data = bank_nona, family = binomial)
+
+
+```
+The Summary of the Model
+
+```{r}
+summary(log_reg)
+```
+```{r}
+boxplot(bank_nona$Attr32)
+```
+```{r}
+plot(bank_nona)
+```
+
+```{r}
+remove_outliers <- function(x, na.rm = TRUE, ...) {
+  qnt <- (x, probs=c(.25, .75), na.rm = na.rm, ...)
+  H <- 1.5 * IQR(x, na.rm = na.rm)
+  y <- x
+  y[x < (qnt[1] - H)] <- NA
+  y[x > (qnt[2] + H)] <- NA
+  y
+}
+```
+
+```{r}
+remove_outliers(bank_nona$Attr32)
+```
+```{r}
+summary(bank_nona$Attr32)
+```
+
